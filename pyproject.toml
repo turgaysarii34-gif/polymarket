@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "polymarket-bot"
+version = "0.1.0"
+description = "Polymarket cross-market inconsistency discovery and paper trading"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.7,<3",
+  "pytest>=8.0,<9",
+  "requests>=2.31,<3",
+  "typer>=0.12,<1",
+]
+
+[project.scripts]
+polymarket-bot = "polymarket_bot.cli:app"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
