@@ -1,0 +1,35 @@
+[
+  {
+    "id": "mkt-election-2028-a",
+    "question": "Will Candidate A win the 2028 election?",
+    "prices": {"yes": 0.61, "no": 0.39},
+    "volume": 250000.0,
+    "spread_bps": 300,
+    "close_time": "2028-11-05T00:00:00Z",
+    "category": "politics",
+    "theme_tags": ["elections", "us"],
+    "outcomes": ["Yes", "No"]
+  },
+  {
+    "id": "mkt-election-2028-b",
+    "question": "Will Candidate B win the 2028 election?",
+    "prices": {"yes": 0.34, "no": 0.66},
+    "volume": 210000.0,
+    "spread_bps": 350,
+    "close_time": "2028-11-05T00:00:00Z",
+    "category": "politics",
+    "theme_tags": ["elections", "us"],
+    "outcomes": ["Yes", "No"]
+  },
+  {
+    "id": "mkt-election-2028-c",
+    "question": "Will any independent candidate win the 2028 election?",
+    "prices": {"yes": 0.12, "no": 0.88},
+    "volume": 80000.0,
+    "spread_bps": 500,
+    "close_time": "2028-11-05T00:00:00Z",
+    "category": "politics",
+    "theme_tags": ["elections", "us"],
+    "outcomes": ["Yes", "No"]
+  }
+]
