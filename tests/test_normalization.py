@@ -1,14 +1,4 @@
-import json
-
-import pytest
-
 from polymarket_bot.normalization.normalize import normalize_markets
-
-
-@pytest.fixture
-def raw_fixture_markets():
-    with open("tests/fixtures/raw_markets.json", "r", encoding="utf-8") as handle:
-        return json.load(handle)
 
 
 def test_normalize_markets_produces_canonical_records(raw_fixture_markets):
