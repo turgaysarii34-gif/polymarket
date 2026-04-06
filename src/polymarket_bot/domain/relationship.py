@@ -8,3 +8,4 @@ class MarketRelationship(BaseModel):
     confidence: float
     why_linked: str
     semantic_risk_score: float
+    evidence: dict[str, str | int | list[str]] = {}

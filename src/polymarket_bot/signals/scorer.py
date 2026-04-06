@@ -9,8 +9,8 @@ EXPECTED_SUM_BY_RELATION = {
 }
 
 RELATION_TYPE_BONUS = {
-    "mutually_exclusive": 0.08,
-    "same_theme": 0.0,
+    "mutually_exclusive": 0.12,
+    "same_theme": -0.02,
 }
 
 
