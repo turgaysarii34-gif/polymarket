@@ -61,3 +61,22 @@ def test_normalize_markets_adapts_live_payload_shape():
     assert result[0].category == "politics"
     assert result[0].theme_tags == ["politics", "us"]
     assert result[0].outcome_names == ["Yes", "No"]
+
+
+def test_normalize_markets_handles_null_live_tags_and_tokens():
+    live_market = {
+        "condition_id": "cond-2",
+        "question": "Will Candidate B win?",
+        "end_date_iso": "2028-11-06T00:00:00Z",
+        "minimum_order_size": 0,
+        "rewards": None,
+        "tags": None,
+        "tokens": None,
+    }
+
+    result = normalize_markets([live_market], fetched_at="2026-04-06T12:00:00Z")
+
+    assert result[0].market_id == "cond-2"
+    assert result[0].category == "uncategorized"
+    assert result[0].theme_tags == []
+    assert result[0].outcome_names == ["Yes", "No"]
