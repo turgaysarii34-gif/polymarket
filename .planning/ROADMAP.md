@@ -11,7 +11,7 @@ Add live Polymarket client, snapshot save/load, freshness handling, snapshot met
 ### Phase 3 — Relationship engine v2 [completed]
 Improve market linking with stronger same-theme heuristics, explicit relation evidence payloads, and better confidence/risk scoring.
 
-### Phase 4 — Segment analytics [pending]
+### Phase 4 — Segment analytics [completed]
 Add category/theme/relation-type summaries and false-positive review views so research can rank strategy slices.
 
 ### Phase 5 — Paper execution lifecycle v2 [pending]

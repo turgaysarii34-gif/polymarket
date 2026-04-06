@@ -1,17 +1,17 @@
 # STATE
 
 ## Current phase
-Phase 4 — Segment analytics
+Phase 5 — Paper execution lifecycle v2
 
 ## Completed
 - Phase 1 complete
 - Phase 2 complete
 - Phase 3 complete
+- Phase 4 complete
 
 ## Next actions
-1. Plan and execute segment analytics.
-2. Plan and execute paper execution lifecycle v2.
-3. Plan and execute snapshot backfill runner.
+1. Plan and execute paper execution lifecycle v2.
+2. Plan and execute snapshot backfill runner.
 
 ## Verification baseline
-As of 2026-04-06, full suite passes with 18 tests.
+As of 2026-04-06, full suite passes with 20 tests.
