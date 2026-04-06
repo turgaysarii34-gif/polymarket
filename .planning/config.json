@@ -1,0 +1,7 @@
+{
+  "mode": "autonomous",
+  "profile": "balanced",
+  "projectType": "backend-research-system",
+  "liveTradingEnabled": false,
+  "currentMilestone": "research-grade-paper-trading-system"
+}
