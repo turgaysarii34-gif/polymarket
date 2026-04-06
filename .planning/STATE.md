@@ -1,7 +1,7 @@
 # STATE
 
 ## Current phase
-Phase 6 — Snapshot backfill runner
+Milestone complete
 
 ## Completed
 - Phase 1 complete
@@ -9,9 +9,10 @@ Phase 6 — Snapshot backfill runner
 - Phase 3 complete
 - Phase 4 complete
 - Phase 5 complete
+- Phase 6 complete
 
 ## Next actions
-1. Plan and execute snapshot backfill runner.
+1. Audit milestone and prepare shipping workflow.
 
 ## Verification baseline
-As of 2026-04-06, full suite passes with 21 tests.
+As of 2026-04-06, full suite passes with 22 tests.

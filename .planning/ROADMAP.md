@@ -17,5 +17,5 @@ Add category/theme/relation-type summaries and false-positive review views so re
 ### Phase 5 — Paper execution lifecycle v2 [completed]
 Add hold windows, exit evaluation, closed-trade persistence, and basic realized paper PnL measurement.
 
-### Phase 6 — Snapshot backfill runner [pending]
+### Phase 6 — Snapshot backfill runner [completed]
 Run research pipeline over many saved snapshots and persist batch results for longitudinal analysis.

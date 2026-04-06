@@ -52,3 +52,24 @@ def run_live_snapshot_pipeline(snapshot_path: Path, db_path: str, client: object
     raw_markets = client.fetch_markets()
     save_snapshot_file(snapshot_path=snapshot_path, markets=raw_markets, fetched_at=fetched_at)
     return _run_raw_market_pipeline(raw_markets, fetched_at=fetched_at, db_path=db_path, snapshot_path=str(snapshot_path))
+
+
+def run_snapshot_backfill(snapshots_dir: Path, db_path: str) -> dict[str, int]:
+    snapshot_count = 0
+    total_markets = 0
+    total_signals = 0
+    total_trades = 0
+
+    for snapshot_path in sorted(snapshots_dir.glob("*.json")):
+        result = replay_snapshot_pipeline(snapshot_path=snapshot_path, db_path=db_path)
+        snapshot_count += 1
+        total_markets += int(result["market_count"])
+        total_signals += int(result["signals"])
+        total_trades += int(result["trades"])
+
+    return {
+        "snapshot_count": snapshot_count,
+        "total_markets": total_markets,
+        "total_signals": total_signals,
+        "total_trades": total_trades,
+    }
