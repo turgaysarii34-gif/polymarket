@@ -14,7 +14,8 @@ def _run_raw_market_pipeline(raw_markets: list[dict], fetched_at: str, db_path: 
     markets = normalize_markets(raw_markets, fetched_at=fetched_at)
     relationships = infer_relationships(markets)
     opportunities = score_opportunities(markets, relationships)
-    filtered = filter_opportunities(opportunities, markets, seen_keys=set(), now=fetched_at)
+    current_time = fetched_at if fetched_at != "fixture" else None
+    filtered = filter_opportunities(opportunities, markets, seen_keys=set(), now=current_time)
     trades = open_paper_trades(filtered, markets)
 
     initialize_db(db_path)
