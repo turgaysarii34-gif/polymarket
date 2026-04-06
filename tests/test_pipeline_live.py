@@ -1,5 +1,6 @@
 import json
 
+from polymarket_bot.normalization.normalize import normalize_markets
 from polymarket_bot.pipeline import replay_snapshot_pipeline, run_live_snapshot_pipeline
 
 
@@ -36,3 +37,27 @@ def test_run_live_snapshot_pipeline_fetches_and_saves_snapshot(tmp_path, live_re
 
     assert result["snapshot_path"].endswith("live.json")
     assert result["market_count"] == len(live_response_payload)
+
+
+def test_normalize_markets_adapts_live_payload_shape():
+    live_market = {
+        "condition_id": "cond-1",
+        "question": "Will Candidate A win?",
+        "end_date_iso": "2028-11-05T00:00:00Z",
+        "minimum_order_size": 15,
+        "rewards": {"max_spread": 240},
+        "tags": ["Politics", "US"],
+        "tokens": [
+            {"outcome": "Yes", "price": 0.54},
+            {"outcome": "No", "price": 0.46},
+        ],
+    }
+
+    result = normalize_markets([live_market], fetched_at="2026-04-06T12:00:00Z")
+
+    assert result[0].market_id == "cond-1"
+    assert result[0].yes_price == 0.54
+    assert result[0].no_price == 0.46
+    assert result[0].category == "politics"
+    assert result[0].theme_tags == ["politics", "us"]
+    assert result[0].outcome_names == ["Yes", "No"]
