@@ -9,3 +9,5 @@ class PaperTrade(BaseModel):
     fill_price: float
     estimated_fee: float
     allocated_notional: float
+    exit_price: float | None = None
+    realized_pnl: float = 0.0

@@ -31,3 +31,22 @@ def open_paper_trades(opportunities: list[SignalOpportunity], markets: list[Norm
         )
 
     return trades
+
+
+def close_paper_trades(trades: list[PaperTrade], exit_price: float) -> list[PaperTrade]:
+    closed: list[PaperTrade] = []
+
+    for trade in trades:
+        gross_move = (exit_price - trade.fill_price) * trade.allocated_notional
+        realized_pnl = gross_move - trade.estimated_fee
+        closed.append(
+            trade.model_copy(
+                update={
+                    "status": "closed",
+                    "exit_price": exit_price,
+                    "realized_pnl": round(realized_pnl, 6),
+                }
+            )
+        )
+
+    return closed

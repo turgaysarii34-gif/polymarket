@@ -14,7 +14,7 @@ Improve market linking with stronger same-theme heuristics, explicit relation ev
 ### Phase 4 — Segment analytics [completed]
 Add category/theme/relation-type summaries and false-positive review views so research can rank strategy slices.
 
-### Phase 5 — Paper execution lifecycle v2 [pending]
+### Phase 5 — Paper execution lifecycle v2 [completed]
 Add hold windows, exit evaluation, closed-trade persistence, and basic realized paper PnL measurement.
 
 ### Phase 6 — Snapshot backfill runner [pending]
