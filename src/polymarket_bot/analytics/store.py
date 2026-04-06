@@ -18,6 +18,17 @@ def initialize_db(db_path: str) -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS snapshot_runs (
+                snapshot_path TEXT PRIMARY KEY,
+                fetched_at TEXT NOT NULL,
+                market_count INTEGER NOT NULL,
+                signal_count INTEGER NOT NULL,
+                trade_count INTEGER NOT NULL
+            )
+            """
+        )
         connection.commit()
 
 
@@ -49,3 +60,49 @@ def insert_trade_rows(db_path: str, trades: list[PaperTrade]) -> None:
             ],
         )
         connection.commit()
+
+
+def insert_snapshot_run(
+    db_path: str,
+    snapshot_path: str,
+    fetched_at: str,
+    market_count: int,
+    signal_count: int,
+    trade_count: int,
+) -> None:
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO snapshot_runs (
+                snapshot_path,
+                fetched_at,
+                market_count,
+                signal_count,
+                trade_count
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (snapshot_path, fetched_at, market_count, signal_count, trade_count),
+        )
+        connection.commit()
+
+
+def list_snapshot_runs(db_path: str) -> list[dict[str, str | int]]:
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT snapshot_path, fetched_at, market_count, signal_count, trade_count
+            FROM snapshot_runs
+            ORDER BY fetched_at DESC
+            """
+        ).fetchall()
+
+    return [
+        {
+            "snapshot_path": row[0],
+            "fetched_at": row[1],
+            "market_count": row[2],
+            "signal_count": row[3],
+            "trade_count": row[4],
+        }
+        for row in rows
+    ]
