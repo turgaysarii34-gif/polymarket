@@ -1,0 +1,13 @@
+[
+  {
+    "id": "live-election-a",
+    "question": "Will Candidate A win?",
+    "outcomes": ["Yes", "No"],
+    "prices": {"yes": 0.54, "no": 0.46},
+    "volume": 120000.0,
+    "spread_bps": 240,
+    "close_time": "2028-11-05T00:00:00Z",
+    "category": "politics",
+    "theme_tags": ["elections", "us"]
+  }
+]
