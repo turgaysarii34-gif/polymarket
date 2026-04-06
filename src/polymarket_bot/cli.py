@@ -51,3 +51,7 @@ def fetch_live_snapshot_pipeline_command(
     print(
         f"snapshot_path={result['snapshot_path']} market_count={result['market_count']} signals={result['signals']} trades={result['trades']}"
     )
+
+
+if __name__ == "__main__":
+    app()

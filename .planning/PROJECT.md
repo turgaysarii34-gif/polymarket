@@ -3,6 +3,20 @@
 ## Name
 Polymarket Bot
 
+## Current State
+Shipped version: v1.0
+
+The project now provides a research-grade, paper-only Polymarket system with live snapshot ingestion, replay workflows, explainable relationship inference, segment analytics, trade lifecycle tracking, and snapshot backfill support.
+
+## Next Milestone Goals
+- semi-live validation tooling
+- richer order book / fill realism
+- promotion gating for validated segments
+- operator-facing review workflow
+
+<details>
+<summary>Archived v1.0 project context</summary>
+
 ## Objective
 Build a research-grade, profit-seeking Polymarket trading system that discovers cross-market pricing inconsistencies, paper trades them honestly, and narrows toward only evidence-backed strategy segments before any live automation.
 
@@ -19,3 +33,5 @@ Completed phases:
 
 ## Current priority
 Advance from raw ingestion and replayability to research usefulness: richer relationship quality, segment-aware analytics, improved paper-trade lifecycle realism, and evidence-producing backfill workflows.
+
+</details>

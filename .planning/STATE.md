@@ -1,18 +1,16 @@
 # STATE
 
 ## Current phase
-Milestone complete
+Milestone archived as v1.0
 
 ## Completed
-- Phase 1 complete
-- Phase 2 complete
-- Phase 3 complete
-- Phase 4 complete
-- Phase 5 complete
-- Phase 6 complete
+- v1.0 archived
+- roadmap collapsed
+- requirements archived
 
 ## Next actions
-1. Audit milestone and prepare shipping workflow.
+1. Start next milestone when ready.
+2. Configure remote and ship PR when available.
 
 ## Verification baseline
-As of 2026-04-06, full suite passes with 22 tests.
+As of 2026-04-06, full suite passes with 23 tests.
