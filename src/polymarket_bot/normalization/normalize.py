@@ -1,7 +1,7 @@
 from polymarket_bot.domain.market import NormalizedMarket
 
 
-def normalize_markets(raw_markets: list[dict]) -> list[NormalizedMarket]:
+def normalize_markets(raw_markets: list[dict], fetched_at: str = "fixture") -> list[NormalizedMarket]:
     normalized: list[NormalizedMarket] = []
 
     for raw in raw_markets:
@@ -17,6 +17,7 @@ def normalize_markets(raw_markets: list[dict]) -> list[NormalizedMarket]:
                 category=raw["category"],
                 theme_tags=raw["theme_tags"],
                 outcome_names=raw["outcomes"],
+                snapshot_fetched_at=fetched_at,
             )
         )
 

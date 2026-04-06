@@ -12,3 +12,4 @@ class NormalizedMarket(BaseModel):
     category: str
     theme_tags: list[str]
     outcome_names: list[str]
+    snapshot_fetched_at: str

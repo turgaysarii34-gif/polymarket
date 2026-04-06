@@ -1,6 +1,12 @@
 from polymarket_bot.normalization.normalize import normalize_markets
 
 
+def test_normalize_markets_captures_snapshot_timestamp(live_response_payload):
+    normalized = normalize_markets(live_response_payload, fetched_at="2026-04-06T12:00:00Z")
+
+    assert normalized[0].snapshot_fetched_at == "2026-04-06T12:00:00Z"
+
+
 def test_normalize_markets_produces_canonical_records(raw_fixture_markets):
     normalized = normalize_markets(raw_fixture_markets)
 
