@@ -1,5 +1,8 @@
+import os
 import sqlite3
 import subprocess
+import sys
+from pathlib import Path
 
 from typer.testing import CliRunner
 
@@ -47,20 +50,27 @@ def test_cli_runs_fixture_pipeline(tmp_path):
 
 
 def test_module_cli_runs_fixture_pipeline(tmp_path):
+    repo_root = Path(__file__).resolve().parent.parent
+    fixture_path = repo_root / "tests" / "fixtures" / "raw_markets.json"
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(repo_root / "src"),
+    }
+
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "polymarket_bot.cli",
             "run-fixture-pipeline",
             "--fixture-path",
-            "/root/polymarket-bot/tests/fixtures/raw_markets.json",
+            str(fixture_path),
             "--db-path",
             str(tmp_path / "module.db"),
         ],
         capture_output=True,
         text=True,
-        env={"PYTHONPATH": "/root/polymarket-bot/src"},
+        env=env,
         check=False,
     )
 
