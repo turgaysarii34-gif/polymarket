@@ -7,6 +7,7 @@ class NormalizedMarket(BaseModel):
     yes_price: float
     no_price: float
     volume: float
+    volume_is_estimated: bool = False
     spread_bps: int
     close_time: str
     category: str

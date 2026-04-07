@@ -39,6 +39,47 @@ def test_run_live_snapshot_pipeline_fetches_and_saves_snapshot(tmp_path, live_re
     assert result["market_count"] == len(live_response_payload)
 
 
+def test_run_live_snapshot_pipeline_returns_debug_summary(tmp_path, live_response_payload):
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "live.json",
+        db_path=str(tmp_path / "analytics.db"),
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-07T12:00:00Z",
+    )
+
+    assert result["debug"] == {
+        "normalized": len(live_response_payload),
+        "relationships": 0,
+        "opportunities": 0,
+        "filtered": 0,
+        "accepted": 0,
+        "rejected_duplicate": 0,
+        "rejected_stale": 0,
+        "rejected_low_volume": 0,
+        "rejected_high_spread": 0,
+    }
+
+
+def test_replay_snapshot_pipeline_returns_debug_summary(tmp_path, live_response_payload):
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(
+        '{"fetched_at": "2026-04-06T12:00:00Z", "market_count": 1, "markets": ' + json.dumps(live_response_payload) + '}',
+        encoding="utf-8",
+    )
+
+    result = replay_snapshot_pipeline(snapshot_path=snapshot_path, db_path=str(tmp_path / "analytics.db"))
+
+    assert result["debug"]["normalized"] == len(live_response_payload)
+    assert result["debug"]["relationships"] == 0
+    assert result["debug"]["opportunities"] == 0
+    assert result["debug"]["filtered"] == 0
+    assert result["debug"]["accepted"] == 0
+    assert result["debug"]["rejected_duplicate"] == 0
+    assert result["debug"]["rejected_stale"] == 0
+    assert result["debug"]["rejected_low_volume"] == 0
+    assert result["debug"]["rejected_high_spread"] == 0
+
+
 def test_normalize_markets_adapts_live_payload_shape():
     live_market = {
         "condition_id": "cond-1",

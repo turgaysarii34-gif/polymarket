@@ -10,12 +10,12 @@ from polymarket_bot.risk.filters import filter_opportunities
 from polymarket_bot.signals.scorer import score_opportunities
 
 
-def _run_raw_market_pipeline(raw_markets: list[dict], fetched_at: str, db_path: str, snapshot_path: str) -> dict[str, int | str]:
+def _run_raw_market_pipeline(raw_markets: list[dict], fetched_at: str, db_path: str, snapshot_path: str) -> dict[str, int | str | dict[str, int]]:
     markets = normalize_markets(raw_markets, fetched_at=fetched_at)
     relationships = infer_relationships(markets)
     opportunities = score_opportunities(markets, relationships)
     current_time = fetched_at if fetched_at != "fixture" else None
-    filtered = filter_opportunities(opportunities, markets, seen_keys=set(), now=current_time)
+    filtered, filter_debug = filter_opportunities(opportunities, markets, seen_keys=set(), now=current_time, include_debug=True)
     trades = open_paper_trades(filtered, markets)
 
     initialize_db(db_path)
@@ -29,11 +29,20 @@ def _run_raw_market_pipeline(raw_markets: list[dict], fetched_at: str, db_path: 
         trade_count=len(trades),
     )
 
+    debug = {
+        "normalized": len(markets),
+        "relationships": len(relationships),
+        "opportunities": len(opportunities),
+        "filtered": len(filtered),
+        **filter_debug,
+    }
+
     return {
         "snapshot_path": snapshot_path,
         "market_count": len(raw_markets),
         "signals": len(filtered),
         "trades": len(trades),
+        "debug": debug,
     }
 
 

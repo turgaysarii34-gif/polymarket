@@ -121,3 +121,27 @@ def test_cli_fetch_live_snapshot_pipeline(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert "market_count=0" in result.stdout
+
+
+def test_cli_fetch_live_snapshot_pipeline_prints_debug_summary(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli_module, "PolymarketClient", lambda base_url: StubClient())
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "fetch-live-snapshot-pipeline",
+            "--snapshot-path",
+            str(tmp_path / "live.json"),
+            "--db-path",
+            str(tmp_path / "analytics.db"),
+            "--fetched-at",
+            "2026-04-07T12:00:00Z",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "normalized=" in result.stdout
+    assert "relationships=" in result.stdout
+    assert "opportunities=" in result.stdout
+    assert "rejected_low_volume=" in result.stdout
