@@ -1,5 +1,7 @@
 import sqlite3
 
+from polymarket_bot.analytics.store import get_bankroll_state
+
 
 def summarize_relation_type_pnl(db_path: str) -> list[dict[str, str | int | float]]:
     with sqlite3.connect(db_path) as connection:
@@ -79,3 +81,60 @@ def summarize_theme_counts(db_path: str) -> list[dict[str, str | int]]:
         grouped[theme]["trade_count"] += trade_count
 
     return list(grouped.values())
+
+
+def summarize_closed_trade_performance(db_path: str) -> dict[str, float | int]:
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT realized_pnl
+            FROM paper_trades
+            WHERE status = 'closed'
+            ORDER BY closed_at ASC, relationship_key ASC
+            """
+        ).fetchall()
+
+    pnls = [float(row[0]) for row in rows]
+    closed_trades = len(pnls)
+    win_count = sum(1 for pnl in pnls if pnl > 0)
+    loss_count = sum(1 for pnl in pnls if pnl <= 0)
+    total_realized_pnl = round(sum(pnls), 6)
+
+    return {
+        "closed_trades": closed_trades,
+        "win_count": win_count,
+        "loss_count": loss_count,
+        "win_rate": round((win_count / closed_trades) * 100, 6) if closed_trades else 0.0,
+        "total_realized_pnl": total_realized_pnl,
+        "average_realized_pnl": round(total_realized_pnl / closed_trades, 6) if closed_trades else 0.0,
+    }
+
+
+def summarize_bankroll_state(db_path: str) -> dict[str, float]:
+    state = get_bankroll_state(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT bankroll_at_entry, realized_pnl
+            FROM paper_trades
+            WHERE status = 'closed'
+            ORDER BY closed_at ASC, relationship_key ASC
+            """
+        ).fetchall()
+
+    curve: list[float] = []
+    for bankroll_at_entry, realized_pnl in rows:
+        curve.append(round(float(bankroll_at_entry) + float(realized_pnl), 6))
+
+    peak = state.day_start_bankroll
+    max_drawdown = 0.0
+    for value in curve:
+        peak = max(peak, value)
+        max_drawdown = max(max_drawdown, round(peak - value, 6))
+
+    return {
+        "current_bankroll": state.current_bankroll,
+        "starting_bankroll": state.day_start_bankroll,
+        "max_drawdown": max_drawdown,
+    }

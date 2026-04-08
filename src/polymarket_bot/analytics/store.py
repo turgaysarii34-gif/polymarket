@@ -12,11 +12,32 @@ DEFAULT_BANKROLL_STATE = BankrollState(
 )
 
 
-def initialize_db(db_path: str) -> None:
-    with sqlite3.connect(db_path) as connection:
+PAPER_TRADES_COLUMNS = [
+    "relationship_key",
+    "left_market_id",
+    "right_market_id",
+    "relation_type",
+    "status",
+    "fill_price",
+    "estimated_fee",
+    "allocated_notional",
+    "opened_at",
+    "score_at_entry",
+    "bankroll_at_entry",
+    "exit_price",
+    "realized_pnl",
+    "closed_at",
+    "exit_snapshot_path",
+]
+
+
+def _ensure_paper_trades_schema(connection: sqlite3.Connection) -> None:
+    columns = connection.execute("PRAGMA table_info(paper_trades)").fetchall()
+    existing = {column[1] for column in columns}
+    if not existing:
         connection.execute(
             """
-            CREATE TABLE IF NOT EXISTS paper_trades (
+            CREATE TABLE paper_trades (
                 relationship_key TEXT PRIMARY KEY,
                 left_market_id TEXT NOT NULL,
                 right_market_id TEXT NOT NULL,
@@ -35,6 +56,76 @@ def initialize_db(db_path: str) -> None:
             )
             """
         )
+        return
+    if existing == set(PAPER_TRADES_COLUMNS):
+        return
+
+    connection.execute("ALTER TABLE paper_trades RENAME TO paper_trades_legacy")
+    connection.execute(
+        """
+        CREATE TABLE paper_trades (
+            relationship_key TEXT PRIMARY KEY,
+            left_market_id TEXT NOT NULL,
+            right_market_id TEXT NOT NULL,
+            relation_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            fill_price REAL NOT NULL,
+            estimated_fee REAL NOT NULL,
+            allocated_notional REAL NOT NULL,
+            opened_at TEXT NOT NULL,
+            score_at_entry REAL NOT NULL,
+            bankroll_at_entry REAL NOT NULL,
+            exit_price REAL,
+            realized_pnl REAL NOT NULL,
+            closed_at REAL,
+            exit_snapshot_path TEXT
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO paper_trades (
+            relationship_key,
+            left_market_id,
+            right_market_id,
+            relation_type,
+            status,
+            fill_price,
+            estimated_fee,
+            allocated_notional,
+            opened_at,
+            score_at_entry,
+            bankroll_at_entry,
+            exit_price,
+            realized_pnl,
+            closed_at,
+            exit_snapshot_path
+        )
+        SELECT
+            relationship_key,
+            left_market_id,
+            right_market_id,
+            '',
+            status,
+            fill_price,
+            estimated_fee,
+            allocated_notional,
+            '',
+            0.0,
+            0.0,
+            NULL,
+            0.0,
+            NULL,
+            NULL
+        FROM paper_trades_legacy
+        """
+    )
+    connection.execute("DROP TABLE paper_trades_legacy")
+
+
+def initialize_db(db_path: str) -> None:
+    with sqlite3.connect(db_path) as connection:
+        _ensure_paper_trades_schema(connection)
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS bankroll_state (

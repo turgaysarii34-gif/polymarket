@@ -1,3 +1,5 @@
+import sqlite3
+
 from polymarket_bot.analytics.store import (
     get_bankroll_state,
     initialize_db,
@@ -105,5 +107,61 @@ def test_insert_snapshot_run_persists_ingestion_metadata(tmp_path):
             "market_count": 42,
             "signal_count": 7,
             "trade_count": 3,
+        }
+    ]
+
+
+def test_initialize_db_upgrades_legacy_paper_trades_schema(tmp_path):
+    db_path = tmp_path / "analytics.db"
+
+    with sqlite3.connect(str(db_path)) as connection:
+        connection.execute(
+            """
+            CREATE TABLE paper_trades (
+                relationship_key TEXT PRIMARY KEY,
+                left_market_id TEXT NOT NULL,
+                right_market_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                fill_price REAL NOT NULL,
+                estimated_fee REAL NOT NULL,
+                allocated_notional REAL NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO paper_trades (
+                relationship_key,
+                left_market_id,
+                right_market_id,
+                status,
+                fill_price,
+                estimated_fee,
+                allocated_notional
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("legacy:key", "left", "right", "open", 0.61, 0.2, 10.0),
+        )
+        connection.commit()
+
+    initialize_db(str(db_path))
+
+    assert list_paper_trades(str(db_path)) == [
+        {
+            "relationship_key": "legacy:key",
+            "left_market_id": "left",
+            "right_market_id": "right",
+            "relation_type": "",
+            "status": "open",
+            "fill_price": 0.61,
+            "estimated_fee": 0.2,
+            "allocated_notional": 10.0,
+            "opened_at": "",
+            "score_at_entry": 0.0,
+            "bankroll_at_entry": 0.0,
+            "exit_price": None,
+            "realized_pnl": 0.0,
+            "closed_at": None,
+            "exit_snapshot_path": None,
         }
     ]

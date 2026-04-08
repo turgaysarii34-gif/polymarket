@@ -1,7 +1,18 @@
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from polymarket_bot.analytics.store import initialize_db, insert_snapshot_run, insert_trade_rows
-from polymarket_bot.execution.paper_engine import open_paper_trades
+from polymarket_bot.analytics.store import (
+    get_bankroll_state,
+    initialize_db,
+    insert_snapshot_run,
+    insert_trade_rows,
+    list_paper_trades,
+    upsert_bankroll_state,
+)
+from polymarket_bot.config import StrategyConfig
+from polymarket_bot.domain.bankroll import BankrollState
+from polymarket_bot.domain.trade import PaperTrade
+from polymarket_bot.execution.paper_engine import close_paper_trades, open_paper_trades
 from polymarket_bot.ingestion.fixtures import load_raw_fixture_markets
 from polymarket_bot.ingestion.snapshots import load_snapshot_file, save_snapshot_file
 from polymarket_bot.normalization.normalize import normalize_markets
@@ -10,16 +21,103 @@ from polymarket_bot.risk.filters import filter_opportunities
 from polymarket_bot.signals.scorer import score_opportunities
 
 
+MAX_RUN_ALLOCATION = 0.10
+DAILY_LOSS_LIMIT_FRACTION = 0.05
+HOLD_DURATION = timedelta(hours=24)
+
+
+def _parse_timestamp(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _paper_trade_from_row(row: dict[str, str | float | None]) -> PaperTrade:
+    return PaperTrade(
+        relationship_key=str(row["relationship_key"]),
+        left_market_id=str(row["left_market_id"]),
+        right_market_id=str(row["right_market_id"]),
+        relation_type=str(row["relation_type"]),
+        status=str(row["status"]),
+        fill_price=float(row["fill_price"]),
+        estimated_fee=float(row["estimated_fee"]),
+        allocated_notional=float(row["allocated_notional"]),
+        opened_at=str(row["opened_at"]),
+        score_at_entry=float(row["score_at_entry"]),
+        bankroll_at_entry=float(row["bankroll_at_entry"]),
+        exit_price=float(row["exit_price"]) if row["exit_price"] is not None else None,
+        realized_pnl=float(row["realized_pnl"]),
+        closed_at=str(row["closed_at"]) if row["closed_at"] is not None else None,
+        exit_snapshot_path=str(row["exit_snapshot_path"]) if row["exit_snapshot_path"] is not None else None,
+    )
+
+
+def _refresh_bankroll_day(state: BankrollState, fetched_at: str) -> BankrollState:
+    current_day = fetched_at[:10]
+    if state.last_reset_day == current_day:
+        return state
+    return BankrollState(
+        current_bankroll=state.current_bankroll,
+        day_start_bankroll=state.current_bankroll,
+        last_reset_day=current_day,
+        daily_realized_pnl=0.0,
+    )
+
+
 def _run_raw_market_pipeline(raw_markets: list[dict], fetched_at: str, db_path: str, snapshot_path: str) -> dict[str, int | str | dict[str, int]]:
+    initialize_db(db_path)
+    bankroll_state = _refresh_bankroll_day(get_bankroll_state(db_path), fetched_at)
+    open_trade_rows = [row for row in list_paper_trades(db_path) if row["status"] == "open"]
+    open_trades = [_paper_trade_from_row(row) for row in open_trade_rows]
+
+    closed_trades: list[PaperTrade] = []
+    still_open_trades: list[PaperTrade] = []
+    if fetched_at != "fixture":
+        current_time = _parse_timestamp(fetched_at)
+        for trade in open_trades:
+            if trade.opened_at and current_time - _parse_timestamp(trade.opened_at) >= HOLD_DURATION:
+                closed_trade = close_paper_trades([trade], exit_price=0.5)[0].model_copy(
+                    update={"closed_at": fetched_at, "exit_snapshot_path": snapshot_path}
+                )
+                closed_trades.append(closed_trade)
+            else:
+                still_open_trades.append(trade)
+    else:
+        still_open_trades = open_trades
+
+    if closed_trades:
+        realized_pnl = round(sum(trade.realized_pnl for trade in closed_trades), 6)
+        bankroll_state = BankrollState(
+            current_bankroll=round(bankroll_state.current_bankroll + realized_pnl, 6),
+            day_start_bankroll=bankroll_state.day_start_bankroll,
+            last_reset_day=bankroll_state.last_reset_day,
+            daily_realized_pnl=round(bankroll_state.daily_realized_pnl + realized_pnl, 6),
+        )
+        insert_trade_rows(db_path, closed_trades)
+
     markets = normalize_markets(raw_markets, fetched_at=fetched_at)
     relationships = infer_relationships(markets)
     opportunities = score_opportunities(markets, relationships)
     current_time = fetched_at if fetched_at != "fixture" else None
-    filtered, filter_debug = filter_opportunities(opportunities, markets, seen_keys=set(), now=current_time, include_debug=True)
-    trades = open_paper_trades(filtered, markets)
+    seen_keys = {trade.relationship_key for trade in still_open_trades}
+    filtered, filter_debug = filter_opportunities(opportunities, markets, seen_keys=seen_keys, now=current_time, include_debug=True)
 
-    initialize_db(db_path)
-    insert_trade_rows(db_path, trades)
+    config = StrategyConfig()
+    daily_loss_lockout = 0
+    trades: list[PaperTrade] = []
+    if bankroll_state.day_start_bankroll > 0 and bankroll_state.daily_realized_pnl <= -(bankroll_state.day_start_bankroll * DAILY_LOSS_LIMIT_FRACTION):
+        daily_loss_lockout = 1
+    else:
+        trades = open_paper_trades(
+            filtered,
+            markets,
+            bankroll=bankroll_state.current_bankroll,
+            max_trades=config.max_positions,
+            max_run_allocation=MAX_RUN_ALLOCATION,
+            opened_at=fetched_at,
+        )
+        if trades:
+            insert_trade_rows(db_path, trades)
+
+    upsert_bankroll_state(db_path, bankroll_state)
     insert_snapshot_run(
         db_path,
         snapshot_path=snapshot_path,
@@ -34,6 +132,7 @@ def _run_raw_market_pipeline(raw_markets: list[dict], fetched_at: str, db_path: 
         "relationships": len(relationships),
         "opportunities": len(opportunities),
         "filtered": len(filtered),
+        "daily_loss_lockout": daily_loss_lockout,
         **filter_debug,
     }
 
@@ -42,6 +141,7 @@ def _run_raw_market_pipeline(raw_markets: list[dict], fetched_at: str, db_path: 
         "market_count": len(raw_markets),
         "signals": len(filtered),
         "trades": len(trades),
+        "closed_trades": len(closed_trades),
         "debug": debug,
     }
 
