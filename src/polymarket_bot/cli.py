@@ -2,6 +2,7 @@ from pathlib import Path
 
 import typer
 
+from polymarket_bot.analytics.reporting import summarize_bankroll_state, summarize_closed_trade_performance
 from polymarket_bot.config import StrategyConfig
 from polymarket_bot.ingestion.polymarket_client import PolymarketClient
 from polymarket_bot.pipeline import replay_snapshot_pipeline, run_fixture_pipeline, run_live_snapshot_pipeline
@@ -20,6 +21,22 @@ def _format_debug_summary(debug: dict[str, int]) -> str:
         f" rejected_stale={debug['rejected_stale']}"
         f" rejected_low_volume={debug['rejected_low_volume']}"
         f" rejected_high_spread={debug['rejected_high_spread']}"
+    )
+
+
+def _format_performance_summary(db_path: str) -> str:
+    bankroll = summarize_bankroll_state(db_path)
+    performance = summarize_closed_trade_performance(db_path)
+    return (
+        f"current_bankroll={bankroll['current_bankroll']}"
+        f" starting_bankroll={bankroll['starting_bankroll']}"
+        f" max_drawdown={bankroll['max_drawdown']}"
+        f" closed_trades={performance['closed_trades']}"
+        f" win_count={performance['win_count']}"
+        f" loss_count={performance['loss_count']}"
+        f" win_rate={performance['win_rate']}"
+        f" total_realized_pnl={performance['total_realized_pnl']}"
+        f" average_realized_pnl={performance['average_realized_pnl']}"
     )
 
 
@@ -44,9 +61,10 @@ def replay_snapshot_pipeline_command(
 ) -> None:
     result = replay_snapshot_pipeline(snapshot_path=snapshot_path, db_path=db_path)
     print(
-        f"snapshot_path={result['snapshot_path']} market_count={result['market_count']} signals={result['signals']} trades={result['trades']}"
+        f"snapshot_path={result['snapshot_path']} market_count={result['market_count']} signals={result['signals']} trades={result['trades']} closed_trades={result['closed_trades']}"
         f"{_format_debug_summary(result['debug'])}"
     )
+    print(_format_performance_summary(db_path))
 
 
 @app.command("fetch-live-snapshot-pipeline")
@@ -64,9 +82,10 @@ def fetch_live_snapshot_pipeline_command(
         fetched_at=fetched_at,
     )
     print(
-        f"snapshot_path={result['snapshot_path']} market_count={result['market_count']} signals={result['signals']} trades={result['trades']}"
+        f"snapshot_path={result['snapshot_path']} market_count={result['market_count']} signals={result['signals']} trades={result['trades']} closed_trades={result['closed_trades']}"
         f"{_format_debug_summary(result['debug'])}"
     )
+    print(_format_performance_summary(db_path))
 
 
 if __name__ == "__main__":
