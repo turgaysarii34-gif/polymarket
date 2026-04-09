@@ -24,11 +24,12 @@ def _format_debug_summary(debug: dict[str, int]) -> str:
     )
 
 
-def _format_performance_summary(db_path: str) -> str:
+def _format_performance_summary(db_path: str, hold_hours: int) -> str:
     bankroll = summarize_bankroll_state(db_path)
     performance = summarize_closed_trade_performance(db_path)
     return (
-        f"current_bankroll={bankroll['current_bankroll']}"
+        f"hold_hours={hold_hours}"
+        f" current_bankroll={bankroll['current_bankroll']}"
         f" starting_bankroll={bankroll['starting_bankroll']}"
         f" max_drawdown={bankroll['max_drawdown']}"
         f" closed_trades={performance['closed_trades']}"
@@ -38,6 +39,13 @@ def _format_performance_summary(db_path: str) -> str:
         f" total_realized_pnl={performance['total_realized_pnl']}"
         f" average_realized_pnl={performance['average_realized_pnl']}"
     )
+
+
+def _resolve_hold_hours(config: StrategyConfig, hold_hours: int | None) -> int:
+    active_hold_hours = hold_hours if hold_hours is not None else config.paper_hold_hours
+    if active_hold_hours <= 0:
+        raise typer.BadParameter("hold hours must be positive")
+    return active_hold_hours
 
 
 @app.callback()
@@ -58,13 +66,16 @@ def run_fixture_pipeline_command(
 def replay_snapshot_pipeline_command(
     snapshot_path: Path = typer.Option(..., "--snapshot-path"),
     db_path: str = typer.Option(..., "--db-path"),
+    hold_hours: int | None = typer.Option(None, "--hold-hours"),
 ) -> None:
-    result = replay_snapshot_pipeline(snapshot_path=snapshot_path, db_path=db_path)
+    config = StrategyConfig()
+    active_hold_hours = _resolve_hold_hours(config, hold_hours)
+    result = replay_snapshot_pipeline(snapshot_path=snapshot_path, db_path=db_path, hold_hours=active_hold_hours)
     print(
         f"snapshot_path={result['snapshot_path']} market_count={result['market_count']} signals={result['signals']} trades={result['trades']} closed_trades={result['closed_trades']}"
         f"{_format_debug_summary(result['debug'])}"
     )
-    print(_format_performance_summary(db_path))
+    print(_format_performance_summary(db_path, active_hold_hours))
 
 
 @app.command("fetch-live-snapshot-pipeline")
@@ -72,20 +83,23 @@ def fetch_live_snapshot_pipeline_command(
     snapshot_path: Path = typer.Option(..., "--snapshot-path"),
     db_path: str = typer.Option(..., "--db-path"),
     fetched_at: str = typer.Option(..., "--fetched-at"),
+    hold_hours: int | None = typer.Option(None, "--hold-hours"),
 ) -> None:
     config = StrategyConfig()
+    active_hold_hours = _resolve_hold_hours(config, hold_hours)
     client = PolymarketClient(base_url=config.base_url)
     result = run_live_snapshot_pipeline(
         snapshot_path=snapshot_path,
         db_path=db_path,
         client=client,
         fetched_at=fetched_at,
+        hold_hours=active_hold_hours,
     )
     print(
         f"snapshot_path={result['snapshot_path']} market_count={result['market_count']} signals={result['signals']} trades={result['trades']} closed_trades={result['closed_trades']}"
         f"{_format_debug_summary(result['debug'])}"
     )
-    print(_format_performance_summary(db_path))
+    print(_format_performance_summary(db_path, active_hold_hours))
 
 
 if __name__ == "__main__":

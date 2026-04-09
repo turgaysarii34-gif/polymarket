@@ -150,6 +150,73 @@ def test_cli_fetch_live_snapshot_pipeline_prints_debug_summary(tmp_path, monkeyp
     assert "rejected_low_volume=" in result.stdout
 
 
+def test_cli_fetch_live_snapshot_pipeline_accepts_hold_hours_override(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli_module, "PolymarketClient", lambda base_url: StubClient())
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "fetch-live-snapshot-pipeline",
+            "--snapshot-path",
+            str(tmp_path / "live.json"),
+            "--db-path",
+            str(tmp_path / "analytics.db"),
+            "--fetched-at",
+            "2026-04-06T12:00:00Z",
+            "--hold-hours",
+            "4",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "hold_hours=4" in result.stdout
+
+
+def test_cli_fetch_live_snapshot_pipeline_rejects_non_positive_hold_hours(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli_module, "PolymarketClient", lambda base_url: StubClient())
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "fetch-live-snapshot-pipeline",
+            "--snapshot-path",
+            str(tmp_path / "live.json"),
+            "--db-path",
+            str(tmp_path / "analytics.db"),
+            "--fetched-at",
+            "2026-04-06T12:00:00Z",
+            "--hold-hours",
+            "0",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "hold hours must be positive" in result.output.lower()
+
+
+def test_cli_fetch_live_snapshot_pipeline_prints_default_hold_hours(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli_module, "PolymarketClient", lambda base_url: StubClient())
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "fetch-live-snapshot-pipeline",
+            "--snapshot-path",
+            str(tmp_path / "live.json"),
+            "--db-path",
+            str(tmp_path / "analytics.db"),
+            "--fetched-at",
+            "2026-04-06T12:00:00Z",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "hold_hours=24" in result.stdout
+
+
 def test_cli_fetch_live_snapshot_pipeline_prints_performance_summary(tmp_path, monkeypatch):
     monkeypatch.setattr(cli_module, "PolymarketClient", lambda base_url: StubClient())
     db_path = tmp_path / "analytics.db"
@@ -220,6 +287,7 @@ def test_cli_fetch_live_snapshot_pipeline_prints_performance_summary(tmp_path, m
 
     assert result.exit_code == 0
     assert "closed_trades=" in result.stdout
+    assert "hold_hours=24" in result.stdout
     assert "current_bankroll=510.0" in result.stdout
     assert "starting_bankroll=510.0" in result.stdout
     assert "win_count=1" in result.stdout

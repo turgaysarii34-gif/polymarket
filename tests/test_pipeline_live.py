@@ -1,6 +1,7 @@
 import json
 
 from polymarket_bot.analytics.store import get_bankroll_state, insert_trade_rows, list_paper_trades, upsert_bankroll_state
+from polymarket_bot.config import StrategyConfig
 from polymarket_bot.domain.bankroll import BankrollState
 from polymarket_bot.domain.trade import PaperTrade
 from polymarket_bot.normalization.normalize import normalize_markets
@@ -13,6 +14,12 @@ class StubClient:
 
     def fetch_markets(self) -> list[dict]:
         return self.payload
+
+
+def test_strategy_config_defaults_hold_hours_to_twenty_four():
+    config = StrategyConfig()
+
+    assert config.paper_hold_hours == 24
 
 
 def test_replay_snapshot_pipeline_persists_snapshot_run(tmp_path, live_response_payload):
@@ -189,6 +196,120 @@ def test_pipeline_closes_trade_after_24h_and_updates_bankroll(tmp_path, live_res
     assert second["closed_trades"] >= 1
     assert any(trade["relationship_key"] == "seed-trade" and trade["status"] == "closed" for trade in trades)
     assert state.current_bankroll != 500.0
+
+
+def test_pipeline_does_not_close_trade_before_custom_hold_hours(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "live.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+        hold_hours=4,
+    )
+    insert_trade_rows(
+        db_path,
+        [
+            PaperTrade(
+                relationship_key="hold-4h",
+                left_market_id="left-market",
+                right_market_id="right-market",
+                relation_type="complementary",
+                status="open",
+                fill_price=0.6,
+                estimated_fee=0.2,
+                allocated_notional=10.0,
+                opened_at="2026-04-08T12:00:00Z",
+                score_at_entry=0.9,
+                bankroll_at_entry=500.0,
+            )
+        ],
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "live-plus-3h.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T15:00:00Z",
+        hold_hours=4,
+    )
+
+    trades = list_paper_trades(db_path)
+
+    assert result["closed_trades"] == 0
+    assert any(trade["relationship_key"] == "hold-4h" and trade["status"] == "open" for trade in trades)
+
+
+def test_pipeline_closes_trade_after_custom_hold_hours(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "live.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+        hold_hours=1,
+    )
+    insert_trade_rows(
+        db_path,
+        [
+            PaperTrade(
+                relationship_key="hold-1h",
+                left_market_id="left-market",
+                right_market_id="right-market",
+                relation_type="complementary",
+                status="open",
+                fill_price=0.6,
+                estimated_fee=0.2,
+                allocated_notional=10.0,
+                opened_at="2026-04-08T12:00:00Z",
+                score_at_entry=0.9,
+                bankroll_at_entry=500.0,
+            )
+        ],
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "live-plus-1h.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T13:01:00Z",
+        hold_hours=1,
+    )
+
+    trades = list_paper_trades(db_path)
+
+    assert result["closed_trades"] >= 1
+    assert any(trade["relationship_key"] == "hold-1h" and trade["status"] == "closed" for trade in trades)
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
 
 
 def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):

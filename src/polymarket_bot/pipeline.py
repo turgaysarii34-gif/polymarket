@@ -23,7 +23,6 @@ from polymarket_bot.signals.scorer import score_opportunities
 
 MAX_RUN_ALLOCATION = 0.10
 DAILY_LOSS_LIMIT_FRACTION = 0.05
-HOLD_DURATION = timedelta(hours=24)
 
 
 def _parse_timestamp(value: str) -> datetime:
@@ -62,18 +61,25 @@ def _refresh_bankroll_day(state: BankrollState, fetched_at: str) -> BankrollStat
     )
 
 
-def _run_raw_market_pipeline(raw_markets: list[dict], fetched_at: str, db_path: str, snapshot_path: str) -> dict[str, int | str | dict[str, int]]:
+def _run_raw_market_pipeline(
+    raw_markets: list[dict],
+    fetched_at: str,
+    db_path: str,
+    snapshot_path: str,
+    hold_hours: int,
+) -> dict[str, int | str | dict[str, int]]:
     initialize_db(db_path)
     bankroll_state = _refresh_bankroll_day(get_bankroll_state(db_path), fetched_at)
     open_trade_rows = [row for row in list_paper_trades(db_path) if row["status"] == "open"]
     open_trades = [_paper_trade_from_row(row) for row in open_trade_rows]
+    active_hold_duration = timedelta(hours=hold_hours)
 
     closed_trades: list[PaperTrade] = []
     still_open_trades: list[PaperTrade] = []
     if fetched_at != "fixture":
         current_time = _parse_timestamp(fetched_at)
         for trade in open_trades:
-            if trade.opened_at and current_time - _parse_timestamp(trade.opened_at) >= HOLD_DURATION:
+            if trade.opened_at and current_time - _parse_timestamp(trade.opened_at) >= active_hold_duration:
                 closed_trade = close_paper_trades([trade], exit_price=0.5)[0].model_copy(
                     update={"closed_at": fetched_at, "exit_snapshot_path": snapshot_path}
                 )
@@ -148,19 +154,45 @@ def _run_raw_market_pipeline(raw_markets: list[dict], fetched_at: str, db_path: 
 
 def run_fixture_pipeline(fixture_path: str, db_path: str) -> dict[str, int]:
     raw_markets = load_raw_fixture_markets(fixture_path)
-    result = _run_raw_market_pipeline(raw_markets, fetched_at="fixture", db_path=db_path, snapshot_path=fixture_path)
+    result = _run_raw_market_pipeline(
+        raw_markets,
+        fetched_at="fixture",
+        db_path=db_path,
+        snapshot_path=fixture_path,
+        hold_hours=StrategyConfig().paper_hold_hours,
+    )
     return {"signals": result["signals"], "trades": result["trades"]}
 
 
-def replay_snapshot_pipeline(snapshot_path: Path, db_path: str) -> dict[str, int | str]:
+def replay_snapshot_pipeline(snapshot_path: Path, db_path: str, hold_hours: int | None = None) -> dict[str, int | str]:
     payload = load_snapshot_file(snapshot_path)
-    return _run_raw_market_pipeline(payload["markets"], payload["fetched_at"], db_path=db_path, snapshot_path=str(snapshot_path))
+    active_hold_hours = hold_hours if hold_hours is not None else StrategyConfig().paper_hold_hours
+    return _run_raw_market_pipeline(
+        payload["markets"],
+        payload["fetched_at"],
+        db_path=db_path,
+        snapshot_path=str(snapshot_path),
+        hold_hours=active_hold_hours,
+    )
 
 
-def run_live_snapshot_pipeline(snapshot_path: Path, db_path: str, client: object, fetched_at: str) -> dict[str, int | str]:
+def run_live_snapshot_pipeline(
+    snapshot_path: Path,
+    db_path: str,
+    client: object,
+    fetched_at: str,
+    hold_hours: int | None = None,
+) -> dict[str, int | str]:
     raw_markets = client.fetch_markets()
     save_snapshot_file(snapshot_path=snapshot_path, markets=raw_markets, fetched_at=fetched_at)
-    return _run_raw_market_pipeline(raw_markets, fetched_at=fetched_at, db_path=db_path, snapshot_path=str(snapshot_path))
+    active_hold_hours = hold_hours if hold_hours is not None else StrategyConfig().paper_hold_hours
+    return _run_raw_market_pipeline(
+        raw_markets,
+        fetched_at=fetched_at,
+        db_path=db_path,
+        snapshot_path=str(snapshot_path),
+        hold_hours=active_hold_hours,
+    )
 
 
 def run_snapshot_backfill(snapshots_dir: Path, db_path: str) -> dict[str, int]:
