@@ -2,6 +2,7 @@ from pydantic import BaseModel
 
 
 class PaperTrade(BaseModel):
+    trade_id: str = ""
     relationship_key: str
     left_market_id: str
     right_market_id: str

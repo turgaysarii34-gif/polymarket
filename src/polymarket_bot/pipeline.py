@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 from polymarket_bot.analytics.store import (
     get_bankroll_state,
     initialize_db,
     insert_snapshot_run,
     insert_trade_rows,
+    list_open_paper_trades,
     list_paper_trades,
+    update_paper_trade_rows,
     upsert_bankroll_state,
 )
 from polymarket_bot.config import StrategyConfig
@@ -31,6 +34,7 @@ def _parse_timestamp(value: str) -> datetime:
 
 def _paper_trade_from_row(row: dict[str, str | float | None]) -> PaperTrade:
     return PaperTrade(
+        trade_id=str(row["trade_id"]),
         relationship_key=str(row["relationship_key"]),
         left_market_id=str(row["left_market_id"]),
         right_market_id=str(row["right_market_id"]),
@@ -70,7 +74,7 @@ def _run_raw_market_pipeline(
 ) -> dict[str, int | str | dict[str, int]]:
     initialize_db(db_path)
     bankroll_state = _refresh_bankroll_day(get_bankroll_state(db_path), fetched_at)
-    open_trade_rows = [row for row in list_paper_trades(db_path) if row["status"] == "open"]
+    open_trade_rows = list_open_paper_trades(db_path)
     open_trades = [_paper_trade_from_row(row) for row in open_trade_rows]
     active_hold_duration = timedelta(hours=hold_hours)
 
@@ -97,7 +101,7 @@ def _run_raw_market_pipeline(
             last_reset_day=bankroll_state.last_reset_day,
             daily_realized_pnl=round(bankroll_state.daily_realized_pnl + realized_pnl, 6),
         )
-        insert_trade_rows(db_path, closed_trades)
+        update_paper_trade_rows(db_path, closed_trades)
 
     markets = normalize_markets(raw_markets, fetched_at=fetched_at)
     relationships = infer_relationships(markets)
@@ -109,17 +113,22 @@ def _run_raw_market_pipeline(
     config = StrategyConfig()
     daily_loss_lockout = 0
     trades: list[PaperTrade] = []
+    remaining_open_count = len(still_open_trades)
+    available_slots = max(config.max_positions - remaining_open_count, 0)
     if bankroll_state.day_start_bankroll > 0 and bankroll_state.daily_realized_pnl <= -(bankroll_state.day_start_bankroll * DAILY_LOSS_LIMIT_FRACTION):
         daily_loss_lockout = 1
-    else:
-        trades = open_paper_trades(
-            filtered,
-            markets,
-            bankroll=bankroll_state.current_bankroll,
-            max_trades=config.max_positions,
-            max_run_allocation=MAX_RUN_ALLOCATION,
-            opened_at=fetched_at,
-        )
+    elif available_slots > 0:
+        trades = [
+            trade.model_copy(update={"trade_id": uuid4().hex})
+            for trade in open_paper_trades(
+                filtered,
+                markets,
+                bankroll=bankroll_state.current_bankroll,
+                max_trades=available_slots,
+                max_run_allocation=MAX_RUN_ALLOCATION,
+                opened_at=fetched_at,
+            )
+        ]
         if trades:
             insert_trade_rows(db_path, trades)
 

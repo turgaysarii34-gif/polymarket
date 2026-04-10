@@ -110,3 +110,56 @@ def test_summarize_bankroll_curve_reports_drawdown(tmp_path):
 
     assert summary["current_bankroll"] == 510.0
     assert summary["max_drawdown"] == 30.0
+
+
+def test_summarize_closed_trade_performance_counts_repeated_relationship_history(tmp_path):
+    db_path = tmp_path / "analytics.db"
+    initialize_db(str(db_path))
+    insert_trade_rows(
+        str(db_path),
+        [
+            PaperTrade(
+                trade_id="trade-1",
+                relationship_key="a:b:same_theme",
+                left_market_id="a",
+                right_market_id="b",
+                relation_type="same_theme",
+                status="closed",
+                fill_price=0.5,
+                estimated_fee=0.1,
+                allocated_notional=10.0,
+                opened_at="2026-04-08T12:00:00Z",
+                score_at_entry=0.4,
+                bankroll_at_entry=500.0,
+                exit_price=0.6,
+                realized_pnl=1.0,
+                closed_at="2026-04-08T13:00:00Z",
+                exit_snapshot_path="snapshots/one.json",
+            ),
+            PaperTrade(
+                trade_id="trade-2",
+                relationship_key="a:b:same_theme",
+                left_market_id="a",
+                right_market_id="b",
+                relation_type="same_theme",
+                status="closed",
+                fill_price=0.52,
+                estimated_fee=0.1,
+                allocated_notional=10.0,
+                opened_at="2026-04-09T12:00:00Z",
+                score_at_entry=0.42,
+                bankroll_at_entry=501.0,
+                exit_price=0.49,
+                realized_pnl=-0.5,
+                closed_at="2026-04-09T13:00:00Z",
+                exit_snapshot_path="snapshots/two.json",
+            ),
+        ],
+    )
+
+    summary = summarize_closed_trade_performance(str(db_path))
+
+    assert summary["closed_trades"] == 2
+    assert summary["win_count"] == 1
+    assert summary["loss_count"] == 1
+    assert summary["total_realized_pnl"] == 0.5
