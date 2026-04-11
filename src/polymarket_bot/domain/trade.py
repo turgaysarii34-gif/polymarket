@@ -18,3 +18,6 @@ class PaperTrade(BaseModel):
     realized_pnl: float = 0.0
     closed_at: str | None = None
     exit_snapshot_path: str | None = None
+    exit_observed_total: float | None = None
+    exit_expected_total: float | None = None
+    exit_gap: float | None = None

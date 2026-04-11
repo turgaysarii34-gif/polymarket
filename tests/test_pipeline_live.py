@@ -168,10 +168,10 @@ def test_pipeline_closes_trade_after_24h_and_updates_bankroll(tmp_path, live_res
         db_path,
         [
             PaperTrade(
-                relationship_key="seed-trade",
-                left_market_id="left-market",
-                right_market_id="right-market",
-                relation_type="complementary",
+                relationship_key="live-election-a:live-election-a:same_theme",
+                left_market_id="live-election-a",
+                right_market_id="live-election-a",
+                relation_type="same_theme",
                 status="open",
                 fill_price=0.6,
                 estimated_fee=0.2,
@@ -194,7 +194,7 @@ def test_pipeline_closes_trade_after_24h_and_updates_bankroll(tmp_path, live_res
     state = get_bankroll_state(db_path)
 
     assert second["closed_trades"] >= 1
-    assert any(trade["relationship_key"] == "seed-trade" and trade["status"] == "closed" for trade in trades)
+    assert any(trade["relationship_key"] == "live-election-a:live-election-a:same_theme" and trade["status"] == "closed" for trade in trades)
     assert state.current_bankroll != 500.0
 
 
@@ -253,10 +253,10 @@ def test_pipeline_closes_trade_after_custom_hold_hours(tmp_path, live_response_p
         db_path,
         [
             PaperTrade(
-                relationship_key="hold-1h",
-                left_market_id="left-market",
-                right_market_id="right-market",
-                relation_type="complementary",
+                relationship_key="live-election-a:live-election-a:same_theme",
+                left_market_id="live-election-a",
+                right_market_id="live-election-a",
+                relation_type="same_theme",
                 status="open",
                 fill_price=0.6,
                 estimated_fee=0.2,
@@ -279,7 +279,7 @@ def test_pipeline_closes_trade_after_custom_hold_hours(tmp_path, live_response_p
     trades = list_paper_trades(db_path)
 
     assert result["closed_trades"] >= 1
-    assert any(trade["relationship_key"] == "hold-1h" and trade["status"] == "closed" for trade in trades)
+    assert any(trade["relationship_key"] == "live-election-a:live-election-a:same_theme" and trade["status"] == "closed" for trade in trades)
 
 
 def test_pipeline_opens_only_remaining_global_slots(tmp_path, raw_fixture_markets):
@@ -381,6 +381,682 @@ def test_pipeline_opens_no_new_trades_when_already_at_global_cap(tmp_path, live_
 
     assert result["trades"] == 0
     assert len(open_rows) == 5
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_closes_trade_using_current_market_based_exit_price(tmp_path, raw_fixture_markets):
+    db_path = str(tmp_path / "analytics.db")
+    initialize_db(db_path)
+    insert_trade_rows(
+        db_path,
+        [
+            PaperTrade(
+                trade_id="trade-1",
+                relationship_key="mkt-election-2028-a:mkt-election-2028-b:same_theme",
+                left_market_id="mkt-election-2028-a",
+                right_market_id="mkt-election-2028-b",
+                relation_type="same_theme",
+                status="open",
+                fill_price=0.65,
+                estimated_fee=0.2,
+                allocated_notional=10.0,
+                opened_at="2026-04-08T12:00:00Z",
+                score_at_entry=0.5,
+                bankroll_at_entry=500.0,
+            )
+        ],
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "exit.json",
+        db_path=db_path,
+        client=StubClient(raw_fixture_markets),
+        fetched_at="2026-04-08T13:05:00Z",
+        hold_hours=1,
+    )
+
+    closed_rows = [row for row in list_paper_trades(db_path) if row["status"] == "closed"]
+
+    assert result["closed_trades"] == 1
+    assert closed_rows[0]["exit_price"] != 0.5
+    assert closed_rows[0]["exit_observed_total"] is not None
+    assert closed_rows[0]["exit_gap"] is not None
+
+
+def test_pipeline_keeps_trade_open_when_exit_market_is_missing(tmp_path):
+    db_path = str(tmp_path / "analytics.db")
+    initialize_db(db_path)
+    insert_trade_rows(
+        db_path,
+        [
+            PaperTrade(
+                trade_id="trade-1",
+                relationship_key="missing-left:missing-right:same_theme",
+                left_market_id="missing-left",
+                right_market_id="missing-right",
+                relation_type="same_theme",
+                status="open",
+                fill_price=0.65,
+                estimated_fee=0.2,
+                allocated_notional=10.0,
+                opened_at="2026-04-08T12:00:00Z",
+                score_at_entry=0.5,
+                bankroll_at_entry=500.0,
+            )
+        ],
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "exit.json",
+        db_path=db_path,
+        client=StubClient([]),
+        fetched_at="2026-04-08T13:05:00Z",
+        hold_hours=1,
+    )
+
+    open_rows = [row for row in list_paper_trades(db_path) if row["status"] == "open"]
+
+    assert result["closed_trades"] == 0
+    assert len(open_rows) == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
+
+
+def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):
+    db_path = str(tmp_path / "analytics.db")
+    run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "seed.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T12:00:00Z",
+    )
+
+    upsert_bankroll_state(
+        db_path,
+        BankrollState(
+            current_bankroll=475.0,
+            day_start_bankroll=500.0,
+            last_reset_day="2026-04-08",
+            daily_realized_pnl=-25.0,
+        ),
+    )
+
+    result = run_live_snapshot_pipeline(
+        snapshot_path=tmp_path / "locked.json",
+        db_path=db_path,
+        client=StubClient(live_response_payload),
+        fetched_at="2026-04-08T14:00:00Z",
+    )
+
+    assert result["trades"] == 0
+    assert result["debug"]["daily_loss_lockout"] == 1
 
 
 def test_pipeline_stops_opening_new_trades_after_daily_five_percent_loss(tmp_path, live_response_payload):

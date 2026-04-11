@@ -71,7 +71,13 @@ def open_paper_trades(
     return trades
 
 
-def close_paper_trades(trades: list[PaperTrade], exit_price: float) -> list[PaperTrade]:
+def close_paper_trades(
+    trades: list[PaperTrade],
+    exit_price: float,
+    exit_observed_total: float | None = None,
+    exit_expected_total: float | None = None,
+    exit_gap: float | None = None,
+) -> list[PaperTrade]:
     closed: list[PaperTrade] = []
 
     for trade in trades:
@@ -83,6 +89,9 @@ def close_paper_trades(trades: list[PaperTrade], exit_price: float) -> list[Pape
                     "status": "closed",
                     "exit_price": exit_price,
                     "realized_pnl": round(realized_pnl, 6),
+                    "exit_observed_total": exit_observed_total,
+                    "exit_expected_total": exit_expected_total,
+                    "exit_gap": exit_gap,
                 }
             )
         )

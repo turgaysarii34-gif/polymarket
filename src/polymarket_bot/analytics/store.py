@@ -30,6 +30,9 @@ PAPER_TRADES_COLUMNS = [
     "realized_pnl",
     "closed_at",
     "exit_snapshot_path",
+    "exit_observed_total",
+    "exit_expected_total",
+    "exit_gap",
 ]
 
 
@@ -55,7 +58,10 @@ def _ensure_paper_trades_schema(connection: sqlite3.Connection) -> None:
                 exit_price REAL,
                 realized_pnl REAL NOT NULL,
                 closed_at REAL,
-                exit_snapshot_path TEXT
+                exit_snapshot_path TEXT,
+                exit_observed_total REAL,
+                exit_expected_total REAL,
+                exit_gap REAL
             )
             """
         )
@@ -82,7 +88,10 @@ def _ensure_paper_trades_schema(connection: sqlite3.Connection) -> None:
             exit_price REAL,
             realized_pnl REAL NOT NULL,
             closed_at REAL,
-            exit_snapshot_path TEXT
+            exit_snapshot_path TEXT,
+            exit_observed_total REAL,
+            exit_expected_total REAL,
+            exit_gap REAL
         )
         """
     )
@@ -104,7 +113,10 @@ def _ensure_paper_trades_schema(connection: sqlite3.Connection) -> None:
             exit_price,
             realized_pnl,
             closed_at,
-            exit_snapshot_path
+            exit_snapshot_path,
+            exit_observed_total,
+            exit_expected_total,
+            exit_gap
         )
         SELECT
             relationship_key || ':legacy',
@@ -121,6 +133,9 @@ def _ensure_paper_trades_schema(connection: sqlite3.Connection) -> None:
             0.0,
             NULL,
             0.0,
+            NULL,
+            NULL,
+            NULL,
             NULL,
             NULL
         FROM paper_trades_legacy
@@ -233,8 +248,11 @@ def insert_trade_rows(db_path: str, trades: list[PaperTrade]) -> None:
                 exit_price,
                 realized_pnl,
                 closed_at,
-                exit_snapshot_path
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                exit_snapshot_path,
+                exit_observed_total,
+                exit_expected_total,
+                exit_gap
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -254,6 +272,9 @@ def insert_trade_rows(db_path: str, trades: list[PaperTrade]) -> None:
                     trade.realized_pnl,
                     trade.closed_at,
                     trade.exit_snapshot_path,
+                    trade.exit_observed_total,
+                    trade.exit_expected_total,
+                    trade.exit_gap,
                 )
                 for trade in trades
             ],
@@ -285,7 +306,10 @@ def update_paper_trade_rows(db_path: str, trades: list[PaperTrade]) -> None:
                 exit_price = ?,
                 realized_pnl = ?,
                 closed_at = ?,
-                exit_snapshot_path = ?
+                exit_snapshot_path = ?,
+                exit_observed_total = ?,
+                exit_expected_total = ?,
+                exit_gap = ?
             WHERE trade_id = ?
             """,
             [
@@ -305,6 +329,9 @@ def update_paper_trade_rows(db_path: str, trades: list[PaperTrade]) -> None:
                     trade.realized_pnl,
                     trade.closed_at,
                     trade.exit_snapshot_path,
+                    trade.exit_observed_total,
+                    trade.exit_expected_total,
+                    trade.exit_gap,
                     trade.trade_id,
                 )
                 for trade in trades
@@ -333,7 +360,10 @@ def list_paper_trades(db_path: str) -> list[dict[str, str | float | None]]:
                 exit_price,
                 realized_pnl,
                 closed_at,
-                exit_snapshot_path
+                exit_snapshot_path,
+                exit_observed_total,
+                exit_expected_total,
+                exit_gap
             FROM paper_trades
             ORDER BY opened_at ASC, trade_id ASC
             """
@@ -357,6 +387,9 @@ def list_paper_trades(db_path: str) -> list[dict[str, str | float | None]]:
             "realized_pnl": row[13],
             "closed_at": row[14],
             "exit_snapshot_path": row[15],
+            "exit_observed_total": row[16],
+            "exit_expected_total": row[17],
+            "exit_gap": row[18],
         }
         for row in rows
     ]
@@ -397,7 +430,10 @@ def list_paper_trades(db_path: str) -> list[dict[str, str | float | None]]:
                 exit_price,
                 realized_pnl,
                 closed_at,
-                exit_snapshot_path
+                exit_snapshot_path,
+                exit_observed_total,
+                exit_expected_total,
+                exit_gap
             FROM paper_trades
             ORDER BY opened_at ASC, trade_id ASC
             """
@@ -421,6 +457,9 @@ def list_paper_trades(db_path: str) -> list[dict[str, str | float | None]]:
             "realized_pnl": row[13],
             "closed_at": row[14],
             "exit_snapshot_path": row[15],
+            "exit_observed_total": row[16],
+            "exit_expected_total": row[17],
+            "exit_gap": row[18],
         }
         for row in rows
     ]
@@ -457,7 +496,10 @@ def list_paper_trades(db_path: str) -> list[dict[str, str | float | None]]:
                 exit_price,
                 realized_pnl,
                 closed_at,
-                exit_snapshot_path
+                exit_snapshot_path,
+                exit_observed_total,
+                exit_expected_total,
+                exit_gap
             FROM paper_trades
             ORDER BY opened_at ASC, trade_id ASC
             """
@@ -481,6 +523,9 @@ def list_paper_trades(db_path: str) -> list[dict[str, str | float | None]]:
             "realized_pnl": row[13],
             "closed_at": row[14],
             "exit_snapshot_path": row[15],
+            "exit_observed_total": row[16],
+            "exit_expected_total": row[17],
+            "exit_gap": row[18],
         }
         for row in rows
     ]

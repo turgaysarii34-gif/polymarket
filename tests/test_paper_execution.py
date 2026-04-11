@@ -19,6 +19,69 @@ def test_close_paper_trades_marks_positions_closed_with_realized_pnl(raw_fixture
     assert closed[0].exit_price == 0.72
 
 
+def test_close_paper_trades_records_market_exit_metadata(raw_fixture_markets):
+    markets = normalize_markets(raw_fixture_markets)
+    relationships = infer_relationships(markets)
+    opportunities = score_opportunities(markets, relationships)
+    filtered = filter_opportunities(opportunities, markets, seen_keys=set())
+    trade = open_paper_trades(filtered[:1], markets)[0]
+
+    closed = close_paper_trades(
+        [trade],
+        exit_price=0.88,
+        exit_observed_total=1.74,
+        exit_expected_total=0.9,
+        exit_gap=0.84,
+    )[0]
+
+    assert closed.exit_price == 0.88
+    assert closed.exit_observed_total == 1.74
+    assert closed.exit_expected_total == 0.9
+    assert closed.exit_gap == 0.84
+
+
+def test_close_paper_trades_realized_pnl_changes_with_exit_price(raw_fixture_markets):
+    markets = normalize_markets(raw_fixture_markets)
+    relationships = infer_relationships(markets)
+    opportunities = score_opportunities(markets, relationships)
+    filtered = filter_opportunities(opportunities, markets, seen_keys=set())
+    trade = open_paper_trades(filtered[:1], markets)[0]
+
+    lower = close_paper_trades([trade], exit_price=0.55)[0]
+    higher = close_paper_trades([trade], exit_price=0.95)[0]
+
+    assert higher.realized_pnl > lower.realized_pnl
+
+
+
+def test_open_paper_trades_creates_position_with_fill_and_fees(raw_fixture_markets):
+    markets = normalize_markets(raw_fixture_markets)
+    relationships = infer_relationships(markets)
+    opportunities = score_opportunities(markets, relationships)
+    filtered = filter_opportunities(opportunities, markets, seen_keys=set())
+
+    trades = open_paper_trades(filtered[:1], markets)
+
+    assert len(trades) == 1
+    assert trades[0].status == "open"
+    assert trades[0].fill_price > 0
+    assert trades[0].estimated_fee > 0
+
+
+def test_open_paper_trades_creates_position_with_fill_and_fees(raw_fixture_markets):
+    markets = normalize_markets(raw_fixture_markets)
+    relationships = infer_relationships(markets)
+    opportunities = score_opportunities(markets, relationships)
+    filtered = filter_opportunities(opportunities, markets, seen_keys=set())
+
+    trades = open_paper_trades(filtered[:1], markets)
+
+    assert len(trades) == 1
+    assert trades[0].status == "open"
+    assert trades[0].fill_price > 0
+    assert trades[0].estimated_fee > 0
+
+
 def test_open_paper_trades_creates_position_with_fill_and_fees(raw_fixture_markets):
     markets = normalize_markets(raw_fixture_markets)
     relationships = infer_relationships(markets)

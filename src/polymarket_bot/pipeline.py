@@ -26,6 +26,10 @@ from polymarket_bot.signals.scorer import score_opportunities
 
 MAX_RUN_ALLOCATION = 0.10
 DAILY_LOSS_LIMIT_FRACTION = 0.05
+EXPECTED_SUM_BY_RELATION = {
+    "mutually_exclusive": 1.0,
+    "same_theme": 0.9,
+}
 
 
 def _parse_timestamp(value: str) -> datetime:
@@ -65,6 +69,18 @@ def _refresh_bankroll_day(state: BankrollState, fetched_at: str) -> BankrollStat
     )
 
 
+def _build_market_lookup(markets: list) -> dict[str, object]:
+    return {market.market_id: market for market in markets}
+
+
+def _compute_market_exit(left, right, relation_type: str) -> tuple[float, float, float, float]:
+    exit_observed_total = round(left.yes_price + right.yes_price, 6)
+    exit_expected_total = EXPECTED_SUM_BY_RELATION[relation_type]
+    exit_gap = round(exit_observed_total - exit_expected_total, 6)
+    exit_price = round((left.yes_price + right.yes_price) / 2, 6)
+    return exit_price, exit_observed_total, exit_expected_total, exit_gap
+
+
 def _run_raw_market_pipeline(
     raw_markets: list[dict],
     fetched_at: str,
@@ -77,6 +93,8 @@ def _run_raw_market_pipeline(
     open_trade_rows = list_open_paper_trades(db_path)
     open_trades = [_paper_trade_from_row(row) for row in open_trade_rows]
     active_hold_duration = timedelta(hours=hold_hours)
+    markets = normalize_markets(raw_markets, fetched_at=fetched_at)
+    market_by_id = _build_market_lookup(markets)
 
     closed_trades: list[PaperTrade] = []
     still_open_trades: list[PaperTrade] = []
@@ -84,9 +102,23 @@ def _run_raw_market_pipeline(
         current_time = _parse_timestamp(fetched_at)
         for trade in open_trades:
             if trade.opened_at and current_time - _parse_timestamp(trade.opened_at) >= active_hold_duration:
-                closed_trade = close_paper_trades([trade], exit_price=0.5)[0].model_copy(
-                    update={"closed_at": fetched_at, "exit_snapshot_path": snapshot_path}
+                left = market_by_id.get(trade.left_market_id)
+                right = market_by_id.get(trade.right_market_id)
+                if left is None or right is None:
+                    still_open_trades.append(trade)
+                    continue
+                exit_price, exit_observed_total, exit_expected_total, exit_gap = _compute_market_exit(
+                    left,
+                    right,
+                    trade.relation_type,
                 )
+                closed_trade = close_paper_trades(
+                    [trade],
+                    exit_price=exit_price,
+                    exit_observed_total=exit_observed_total,
+                    exit_expected_total=exit_expected_total,
+                    exit_gap=exit_gap,
+                )[0].model_copy(update={"closed_at": fetched_at, "exit_snapshot_path": snapshot_path})
                 closed_trades.append(closed_trade)
             else:
                 still_open_trades.append(trade)
@@ -103,7 +135,6 @@ def _run_raw_market_pipeline(
         )
         update_paper_trade_rows(db_path, closed_trades)
 
-    markets = normalize_markets(raw_markets, fetched_at=fetched_at)
     relationships = infer_relationships(markets)
     opportunities = score_opportunities(markets, relationships)
     current_time = fetched_at if fetched_at != "fixture" else None

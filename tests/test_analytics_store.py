@@ -65,6 +65,9 @@ def test_insert_trade_rows_persists_extended_trade_fields(tmp_path):
         "realized_pnl": 0.0,
         "closed_at": None,
         "exit_snapshot_path": None,
+        "exit_observed_total": None,
+        "exit_expected_total": None,
+        "exit_gap": None,
     }
 
 
@@ -167,6 +170,9 @@ def test_initialize_db_upgrades_legacy_paper_trades_schema(tmp_path):
             "realized_pnl": 0.0,
             "closed_at": None,
             "exit_snapshot_path": None,
+            "exit_observed_total": None,
+            "exit_expected_total": None,
+            "exit_gap": None,
         }
     ]
 
@@ -318,6 +324,94 @@ def test_list_open_paper_trades_returns_only_open_rows(tmp_path):
     assert [row["trade_id"] for row in rows] == ["open-1"]
 
 
+def test_insert_trade_rows_persists_exit_convergence_fields(tmp_path):
+    db_path = tmp_path / "analytics.db"
+    initialize_db(str(db_path))
+
+    trade = PaperTrade(
+        trade_id="trade-1",
+        relationship_key="a:b:same_theme",
+        left_market_id="a",
+        right_market_id="b",
+        relation_type="same_theme",
+        status="closed",
+        fill_price=0.61,
+        estimated_fee=0.2,
+        allocated_notional=10.0,
+        opened_at="2026-04-08T12:00:00Z",
+        score_at_entry=0.12,
+        bankroll_at_entry=500.0,
+        exit_price=0.74,
+        realized_pnl=1.1,
+        closed_at="2026-04-08T13:00:00Z",
+        exit_snapshot_path="snapshots/exit.json",
+        exit_observed_total=1.46,
+        exit_expected_total=0.9,
+        exit_gap=0.56,
+    )
+
+    insert_trade_rows(str(db_path), [trade])
+    rows = list_paper_trades(str(db_path))
+
+    assert rows[0]["exit_observed_total"] == 1.46
+    assert rows[0]["exit_expected_total"] == 0.9
+    assert rows[0]["exit_gap"] == 0.56
+
+
+def test_update_paper_trade_rows_closes_specific_trade_instance(tmp_path):
+    db_path = tmp_path / "analytics.db"
+    initialize_db(str(db_path))
+    insert_trade_rows(
+        str(db_path),
+        [
+            PaperTrade(
+                trade_id="open-1",
+                relationship_key="a:b:same_theme",
+                left_market_id="a",
+                right_market_id="b",
+                relation_type="same_theme",
+                status="open",
+                fill_price=0.61,
+                estimated_fee=0.2,
+                allocated_notional=10.0,
+                opened_at="2026-04-08T12:00:00Z",
+                score_at_entry=0.12,
+                bankroll_at_entry=500.0,
+            )
+        ],
+    )
+
+    update_paper_trade_rows(
+        str(db_path),
+        [
+            PaperTrade(
+                trade_id="open-1",
+                relationship_key="a:b:same_theme",
+                left_market_id="a",
+                right_market_id="b",
+                relation_type="same_theme",
+                status="closed",
+                fill_price=0.61,
+                estimated_fee=0.2,
+                allocated_notional=10.0,
+                opened_at="2026-04-08T12:00:00Z",
+                score_at_entry=0.12,
+                bankroll_at_entry=500.0,
+                exit_price=0.7,
+                realized_pnl=1.0,
+                closed_at="2026-04-08T13:00:00Z",
+                exit_snapshot_path="snapshots/exit.json",
+            )
+        ],
+    )
+
+    rows = list_paper_trades(str(db_path))
+
+    assert rows[0]["trade_id"] == "open-1"
+    assert rows[0]["status"] == "closed"
+    assert rows[0]["realized_pnl"] == 1.0
+
+
 def test_update_paper_trade_rows_closes_specific_trade_instance(tmp_path):
     db_path = tmp_path / "analytics.db"
     initialize_db(str(db_path))
@@ -425,5 +519,8 @@ def test_initialize_db_upgrades_legacy_paper_trades_schema(tmp_path):
             "realized_pnl": 0.0,
             "closed_at": None,
             "exit_snapshot_path": None,
+            "exit_observed_total": None,
+            "exit_expected_total": None,
+            "exit_gap": None,
         }
     ]
