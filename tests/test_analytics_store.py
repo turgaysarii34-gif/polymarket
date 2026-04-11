@@ -154,7 +154,7 @@ def test_initialize_db_upgrades_legacy_paper_trades_schema(tmp_path):
 
     assert list_paper_trades(str(db_path)) == [
         {
-            "trade_id": "legacy:key:legacy",
+            "trade_id": "legacy:key:legacy:1",
             "relationship_key": "legacy:key",
             "left_market_id": "left",
             "right_market_id": "right",
@@ -175,6 +175,69 @@ def test_initialize_db_upgrades_legacy_paper_trades_schema(tmp_path):
             "exit_gap": None,
         }
     ]
+
+
+def test_initialize_db_upgrades_existing_trade_ids_without_collisions(tmp_path):
+    db_path = tmp_path / "analytics.db"
+
+    with sqlite3.connect(str(db_path)) as connection:
+        connection.execute(
+            """
+            CREATE TABLE paper_trades (
+                trade_id TEXT PRIMARY KEY,
+                relationship_key TEXT NOT NULL,
+                left_market_id TEXT NOT NULL,
+                right_market_id TEXT NOT NULL,
+                relation_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                fill_price REAL NOT NULL,
+                estimated_fee REAL NOT NULL,
+                allocated_notional REAL NOT NULL,
+                opened_at TEXT NOT NULL,
+                score_at_entry REAL NOT NULL,
+                bankroll_at_entry REAL NOT NULL,
+                exit_price REAL,
+                realized_pnl REAL NOT NULL,
+                closed_at REAL,
+                exit_snapshot_path TEXT
+            )
+            """
+        )
+        connection.executemany(
+            """
+            INSERT INTO paper_trades (
+                trade_id,
+                relationship_key,
+                left_market_id,
+                right_market_id,
+                relation_type,
+                status,
+                fill_price,
+                estimated_fee,
+                allocated_notional,
+                opened_at,
+                score_at_entry,
+                bankroll_at_entry,
+                exit_price,
+                realized_pnl,
+                closed_at,
+                exit_snapshot_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("trade-1", "same:key", "left-1", "right-1", "same_theme", "closed", 0.61, 0.2, 10.0, "2026-04-08T12:00:00Z", 0.1, 500.0, 0.7, 1.0, "2026-04-08T13:00:00Z", "snapshots/one.json"),
+                ("trade-2", "same:key", "left-1", "right-1", "same_theme", "closed", 0.62, 0.2, 10.0, "2026-04-09T12:00:00Z", 0.2, 501.0, 0.68, -0.5, "2026-04-09T13:00:00Z", "snapshots/two.json"),
+            ],
+        )
+        connection.commit()
+
+    initialize_db(str(db_path))
+
+    rows = list_paper_trades(str(db_path))
+    assert [row["trade_id"] for row in rows] == ["trade-1", "trade-2"]
+    assert [row["relationship_key"] for row in rows] == ["same:key", "same:key"]
+    assert all("exit_observed_total" in row for row in rows)
+    assert all(row["exit_observed_total"] is None for row in rows)
 
 
 def test_insert_trade_rows_preserves_multiple_closed_trades_for_same_relationship(tmp_path):
@@ -503,7 +566,7 @@ def test_initialize_db_upgrades_legacy_paper_trades_schema(tmp_path):
 
     assert list_paper_trades(str(db_path)) == [
         {
-            "trade_id": "legacy:key:legacy",
+            "trade_id": "legacy:key:legacy:1",
             "relationship_key": "legacy:key",
             "left_market_id": "left",
             "right_market_id": "right",
@@ -524,3 +587,66 @@ def test_initialize_db_upgrades_legacy_paper_trades_schema(tmp_path):
             "exit_gap": None,
         }
     ]
+
+
+def test_initialize_db_upgrades_existing_trade_ids_without_collisions(tmp_path):
+    db_path = tmp_path / "analytics.db"
+
+    with sqlite3.connect(str(db_path)) as connection:
+        connection.execute(
+            """
+            CREATE TABLE paper_trades (
+                trade_id TEXT PRIMARY KEY,
+                relationship_key TEXT NOT NULL,
+                left_market_id TEXT NOT NULL,
+                right_market_id TEXT NOT NULL,
+                relation_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                fill_price REAL NOT NULL,
+                estimated_fee REAL NOT NULL,
+                allocated_notional REAL NOT NULL,
+                opened_at TEXT NOT NULL,
+                score_at_entry REAL NOT NULL,
+                bankroll_at_entry REAL NOT NULL,
+                exit_price REAL,
+                realized_pnl REAL NOT NULL,
+                closed_at REAL,
+                exit_snapshot_path TEXT
+            )
+            """
+        )
+        connection.executemany(
+            """
+            INSERT INTO paper_trades (
+                trade_id,
+                relationship_key,
+                left_market_id,
+                right_market_id,
+                relation_type,
+                status,
+                fill_price,
+                estimated_fee,
+                allocated_notional,
+                opened_at,
+                score_at_entry,
+                bankroll_at_entry,
+                exit_price,
+                realized_pnl,
+                closed_at,
+                exit_snapshot_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("trade-1", "same:key", "left-1", "right-1", "same_theme", "closed", 0.61, 0.2, 10.0, "2026-04-08T12:00:00Z", 0.1, 500.0, 0.7, 1.0, "2026-04-08T13:00:00Z", "snapshots/one.json"),
+                ("trade-2", "same:key", "left-1", "right-1", "same_theme", "closed", 0.62, 0.2, 10.0, "2026-04-09T12:00:00Z", 0.2, 501.0, 0.68, -0.5, "2026-04-09T13:00:00Z", "snapshots/two.json"),
+            ],
+        )
+        connection.commit()
+
+    initialize_db(str(db_path))
+
+    rows = list_paper_trades(str(db_path))
+    assert [row["trade_id"] for row in rows] == ["trade-1", "trade-2"]
+    assert [row["relationship_key"] for row in rows] == ["same:key", "same:key"]
+    assert all("exit_observed_total" in row for row in rows)
+    assert all(row["exit_observed_total"] is None for row in rows)

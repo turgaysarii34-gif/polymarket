@@ -95,52 +95,101 @@ def _ensure_paper_trades_schema(connection: sqlite3.Connection) -> None:
         )
         """
     )
-    connection.execute(
-        """
-        INSERT INTO paper_trades (
-            trade_id,
-            relationship_key,
-            left_market_id,
-            right_market_id,
-            relation_type,
-            status,
-            fill_price,
-            estimated_fee,
-            allocated_notional,
-            opened_at,
-            score_at_entry,
-            bankroll_at_entry,
-            exit_price,
-            realized_pnl,
-            closed_at,
-            exit_snapshot_path,
-            exit_observed_total,
-            exit_expected_total,
-            exit_gap
+    if "trade_id" in existing:
+        connection.execute(
+            """
+            INSERT INTO paper_trades (
+                trade_id,
+                relationship_key,
+                left_market_id,
+                right_market_id,
+                relation_type,
+                status,
+                fill_price,
+                estimated_fee,
+                allocated_notional,
+                opened_at,
+                score_at_entry,
+                bankroll_at_entry,
+                exit_price,
+                realized_pnl,
+                closed_at,
+                exit_snapshot_path,
+                exit_observed_total,
+                exit_expected_total,
+                exit_gap
+            )
+            SELECT
+                trade_id,
+                relationship_key,
+                left_market_id,
+                right_market_id,
+                relation_type,
+                status,
+                fill_price,
+                estimated_fee,
+                allocated_notional,
+                opened_at,
+                score_at_entry,
+                bankroll_at_entry,
+                exit_price,
+                realized_pnl,
+                closed_at,
+                exit_snapshot_path,
+                NULL,
+                NULL,
+                NULL
+            FROM paper_trades_legacy
+            """
         )
-        SELECT
-            relationship_key || ':legacy',
-            relationship_key,
-            left_market_id,
-            right_market_id,
-            '',
-            status,
-            fill_price,
-            estimated_fee,
-            allocated_notional,
-            '',
-            0.0,
-            0.0,
-            NULL,
-            0.0,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL
-        FROM paper_trades_legacy
-        """
-    )
+    else:
+        connection.execute(
+            """
+            INSERT INTO paper_trades (
+                trade_id,
+                relationship_key,
+                left_market_id,
+                right_market_id,
+                relation_type,
+                status,
+                fill_price,
+                estimated_fee,
+                allocated_notional,
+                opened_at,
+                score_at_entry,
+                bankroll_at_entry,
+                exit_price,
+                realized_pnl,
+                closed_at,
+                exit_snapshot_path,
+                exit_observed_total,
+                exit_expected_total,
+                exit_gap
+            )
+            SELECT
+                relationship_key || ':legacy:' || rowid,
+                relationship_key,
+                left_market_id,
+                right_market_id,
+                '',
+                status,
+                fill_price,
+                estimated_fee,
+                allocated_notional,
+                '',
+                0.0,
+                0.0,
+                NULL,
+                0.0,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL
+            FROM paper_trades_legacy
+            """
+        )
+
     connection.execute("DROP TABLE paper_trades_legacy")
 
 
