@@ -2,7 +2,31 @@ from polymarket_bot.domain.market import NormalizedMarket
 from polymarket_bot.domain.relationship import MarketRelationship
 
 
-MUTUALLY_EXCLUSIVE_PREFIX = "Will Candidate"
+WINNER_KEYWORDS = (" win the ", "winner")
+WINNER_EXCLUSION_KEYWORDS = ("team", "championship", "match")
+
+
+def _is_winner_type_question(question: str) -> bool:
+    lowered = question.lower()
+    if any(word in lowered for word in WINNER_EXCLUSION_KEYWORDS):
+        return False
+    return any(keyword in lowered for keyword in WINNER_KEYWORDS)
+
+
+def _contest_suffix(question: str) -> str:
+    lowered = question.lower().strip(" ?")
+    marker = " win the "
+    if marker in lowered:
+        return lowered.split(marker, 1)[1].strip()
+    return lowered
+
+
+def _same_contest_family(left: NormalizedMarket, right: NormalizedMarket, shared_tags: list[str]) -> bool:
+    return (
+        left.category == right.category
+        and len(shared_tags) >= 2
+        and _contest_suffix(left.question) == _contest_suffix(right.question)
+    )
 
 
 def infer_relationships(markets: list[NormalizedMarket]) -> list[MarketRelationship]:
@@ -29,18 +53,20 @@ def infer_relationships(markets: list[NormalizedMarket]) -> list[MarketRelations
                     )
                 )
 
-            if left.question.startswith(MUTUALLY_EXCLUSIVE_PREFIX) and right.question.startswith(MUTUALLY_EXCLUSIVE_PREFIX):
+            if _is_winner_type_question(left.question) and _is_winner_type_question(right.question) and _same_contest_family(left, right, shared_tags):
                 relationships.append(
                     MarketRelationship(
                         left_market_id=left.market_id,
                         right_market_id=right.market_id,
                         relation_type="mutually_exclusive",
-                        confidence=0.9,
-                        why_linked="candidate winner markets cannot both resolve yes",
+                        confidence=0.85,
+                        why_linked="winner markets in the same contest cannot both resolve yes",
                         semantic_risk_score=0.15,
                         evidence={
-                            "rule": "candidate_prefix",
+                            "rule": "winner_family",
                             "shared_category": left.category,
+                            "shared_tags": shared_tags,
+                            "contest_suffix": _contest_suffix(left.question),
                         },
                     )
                 )
