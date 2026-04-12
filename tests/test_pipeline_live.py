@@ -342,8 +342,8 @@ def test_pipeline_opens_only_remaining_global_slots(tmp_path, raw_fixture_market
 
     open_rows = [row for row in list_paper_trades(db_path) if row["status"] == "open"]
 
-    assert result["trades"] == 1
-    assert len(open_rows) == 4
+    assert result["trades"] == 2
+    assert len(open_rows) == 5
 
 
 def test_pipeline_opens_no_new_trades_when_already_at_global_cap(tmp_path, live_response_payload):
