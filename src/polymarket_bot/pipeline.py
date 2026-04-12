@@ -81,12 +81,17 @@ def _compute_market_exit(left, right, relation_type: str) -> tuple[float, float,
     return exit_price, exit_observed_total, exit_expected_total, exit_gap
 
 
+def _filter_relation_types(opportunities, relation_types: list[str]):
+    return [item for item in opportunities if item.relation_type in relation_types]
+
+
 def _run_raw_market_pipeline(
     raw_markets: list[dict],
     fetched_at: str,
     db_path: str,
     snapshot_path: str,
     hold_hours: int,
+    relation_types: list[str],
 ) -> dict[str, int | str | dict[str, int]]:
     initialize_db(db_path)
     bankroll_state = _refresh_bankroll_day(get_bankroll_state(db_path), fetched_at)
@@ -137,6 +142,7 @@ def _run_raw_market_pipeline(
 
     relationships = infer_relationships(markets)
     opportunities = score_opportunities(markets, relationships)
+    opportunities = _filter_relation_types(opportunities, relation_types)
     current_time = fetched_at if fetched_at != "fixture" else None
     seen_keys = {trade.relationship_key for trade in still_open_trades}
     filtered, filter_debug = filter_opportunities(opportunities, markets, seen_keys=seen_keys, now=current_time, include_debug=True)
@@ -194,25 +200,35 @@ def _run_raw_market_pipeline(
 
 def run_fixture_pipeline(fixture_path: str, db_path: str) -> dict[str, int]:
     raw_markets = load_raw_fixture_markets(fixture_path)
+    config = StrategyConfig()
     result = _run_raw_market_pipeline(
         raw_markets,
         fetched_at="fixture",
         db_path=db_path,
         snapshot_path=fixture_path,
-        hold_hours=StrategyConfig().paper_hold_hours,
+        hold_hours=config.paper_hold_hours,
+        relation_types=config.paper_relation_types,
     )
     return {"signals": result["signals"], "trades": result["trades"]}
 
 
-def replay_snapshot_pipeline(snapshot_path: Path, db_path: str, hold_hours: int | None = None) -> dict[str, int | str]:
+def replay_snapshot_pipeline(
+    snapshot_path: Path,
+    db_path: str,
+    hold_hours: int | None = None,
+    relation_types: list[str] | None = None,
+) -> dict[str, int | str]:
     payload = load_snapshot_file(snapshot_path)
-    active_hold_hours = hold_hours if hold_hours is not None else StrategyConfig().paper_hold_hours
+    config = StrategyConfig()
+    active_hold_hours = hold_hours if hold_hours is not None else config.paper_hold_hours
+    active_relation_types = relation_types if relation_types is not None else config.paper_relation_types
     return _run_raw_market_pipeline(
         payload["markets"],
         payload["fetched_at"],
         db_path=db_path,
         snapshot_path=str(snapshot_path),
         hold_hours=active_hold_hours,
+        relation_types=active_relation_types,
     )
 
 
@@ -222,16 +238,20 @@ def run_live_snapshot_pipeline(
     client: object,
     fetched_at: str,
     hold_hours: int | None = None,
+    relation_types: list[str] | None = None,
 ) -> dict[str, int | str]:
     raw_markets = client.fetch_markets()
     save_snapshot_file(snapshot_path=snapshot_path, markets=raw_markets, fetched_at=fetched_at)
-    active_hold_hours = hold_hours if hold_hours is not None else StrategyConfig().paper_hold_hours
+    config = StrategyConfig()
+    active_hold_hours = hold_hours if hold_hours is not None else config.paper_hold_hours
+    active_relation_types = relation_types if relation_types is not None else config.paper_relation_types
     return _run_raw_market_pipeline(
         raw_markets,
         fetched_at=fetched_at,
         db_path=db_path,
         snapshot_path=str(snapshot_path),
         hold_hours=active_hold_hours,
+        relation_types=active_relation_types,
     )
 
 
