@@ -9,3 +9,5 @@ class StrategyConfig(BaseModel):
     max_spread_bps: int = 800
     max_snapshot_age_seconds: int = 900
     max_positions: int = 5
+    paper_hold_hours: int = 24
+    paper_relation_types: list[str] = ["mutually_exclusive"]

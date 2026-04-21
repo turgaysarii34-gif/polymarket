@@ -2,18 +2,18 @@ from polymarket_bot.ingestion.polymarket_client import PolymarketClient
 
 
 class StubResponse:
-    def __init__(self, payload: list[dict]) -> None:
+    def __init__(self, payload: list[dict] | dict) -> None:
         self._payload = payload
 
     def raise_for_status(self) -> None:
         pass
 
-    def json(self) -> list[dict]:
+    def json(self) -> list[dict] | dict:
         return self._payload
 
 
 class StubSession:
-    def __init__(self, payload: list[dict]) -> None:
+    def __init__(self, payload: list[dict] | dict) -> None:
         self.payload = payload
         self.calls: list[tuple[str, dict]] = []
 
@@ -35,3 +35,12 @@ def test_fetch_markets_uses_configured_endpoint_and_returns_payload(live_respons
             {"params": {"closed": "false", "limit": 500}, "timeout": 30},
         )
     ]
+
+
+def test_fetch_markets_unwraps_data_payload(live_response_payload):
+    session = StubSession({"data": live_response_payload})
+    client = PolymarketClient(base_url="https://example.com", session=session)
+
+    result = client.fetch_markets()
+
+    assert result == live_response_payload

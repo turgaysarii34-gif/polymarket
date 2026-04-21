@@ -13,4 +13,7 @@ class PolymarketClient:
             timeout=30,
         )
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+        if isinstance(payload, dict) and "data" in payload:
+            return payload["data"]
+        return payload
